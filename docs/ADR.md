@@ -78,7 +78,9 @@ MVP 속도 최우선. 외부 의존성 최소화. 작동하는 최소 구현을 
 
 ### ADR-008: symbol_key를 stable hash ID로 사용
 
-**결정**: 심볼 식별자로 `symbol_key = hash(repo_id + commit_sha + file_path + name + kind + start_line)`를 사용한다. `symbol_name` 단순 문자열 soft FK는 사용하지 않는다.
+**결정**: 심볼 식별자로 `symbol_key = sha256(repo_name + commit_sha + file_path + name + kind + start_line)` hex(64자)를 사용한다. `symbol_name` 단순 문자열 soft FK는 사용하지 않는다.
+
+> **Session 5 clarification**: 원문은 `repo_id`였으나 CLI/패커 시점에 서버 autoincrement id를 알 수 없어 `repo_name`으로 변경했다. `repo_name`은 사람이 지정하는 안정 식별자이며, Variant A↔B 간 이식성도 보장된다. 필드 구분자는 NUL(\0)을 사용해 경계 모호성을 방지한다. (Session 5, 2026-04-19)
 
 **이유**: 이름만으로는 동명 심볼의 충돌을 막을 수 없다. stable hash ID는 `occurrences` 테이블에서 심볼 참조의 안정성을 보장한다.
 
@@ -113,6 +115,8 @@ MVP 속도 최우선. 외부 의존성 최소화. 작동하는 최소 구현을 
 **이유**: 중앙 공유 인덱스에서 AI 에이전트가 코드를 직접 수정하는 위험을 차단한다. 읽기 전용으로 제한하면 MCP 클라이언트 권한 관리가 단순해진다.
 
 **트레이드오프**: AI 에이전트가 심볼 위치 정보는 얻지만 소스 파일을 직접 수정하지는 못한다. 이는 의도된 제약이다.
+
+**구현 완료**: Session 7, `packages/mcp-server` + REST wrap, stdio transport.
 
 ---
 
@@ -211,3 +215,13 @@ MVP 속도 최우선. 외부 의존성 최소화. 작동하는 최소 구현을 
 **이유**: ADR-004("두 배포 변형의 API·CLI는 완전히 동일")를 준수하기 위해서다. CLI가 SQLite에 직접 쓰면 Variant A·B 분기가 CLI 레이어까지 침투해 ADR-003 어댑터 경계가 무력화된다. REST API는 Session 5에서 구현하므로, `analyze push` 명령어도 Session 5로 이연한다. Session 4는 스토리지 레이어(4.5~4.9)와 패커(4.10)만 구현한다.
 
 **트레이드오프**: Session 4에서 `analyze push`를 실행 불가. 패커 출력물(`.codebase-analysis/index.json`, `source.zip`)은 생성되지만 실제 업로드는 Session 5 REST API 완성 후 가능하다.
+
+---
+
+### ADR-021: 별도 독립 레포로 운영 (OQ-006 해결)
+
+**결정**: `codebase-analysis`는 `codebase-memory-sync`(CMS)와 분리된 독립 Git 레포(`github.com/yeochul-jeon/codebase-analysis`)로 운영한다. CMS 모노레포에 패키지로 병합하지 않는다.
+
+**이유**: CMS 본 프로젝트가 현재 홀드 상태이므로 모노레포 통합의 공유 이점(shared tooling, CI 재사용)이 실질적으로 없다. 독립 레포는 CI/CD 파이프라인, 접근 권한, 배포 단위를 분리해 운영 복잡성을 낮춘다. 이미 Session 1부터 별도 레포로 진행 중이며 전환 비용이 크다.
+
+**트레이드오프**: CMS가 재개될 경우 공통 타입·유틸리티 공유에 npm 패키지 배포 또는 git submodule이 필요해진다. 현 시점에서는 두 프로젝트 간 공유 코드가 없으므로 트레이드오프 비용 0.

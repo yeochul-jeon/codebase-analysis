@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>symbol — codebase-analysis</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css">
+</head>
+<body>
+  <header>
+    <a href="javascript:history.back()">← back</a>
+    <h1 id="sym-name">loading…</h1>
+  </header>
+  <main>
+    <div id="error" hidden></div>
+    <section id="meta">
+      <p>
+        <code id="sym-kind"></code> ·
+        <span id="sym-file"></span>:<span id="sym-lines"></span>
+      </p>
+      <pre id="sym-signature"></pre>
+    </section>
+    <section id="body-section">
+      <h2>Body</h2>
+      <pre><code id="sym-body"></code></pre>
+    </section>
+    <section id="refs-section">
+      <h2>References</h2>
+      <ul id="sym-refs"></ul>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-clike.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-typescript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-java.min.js"></script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

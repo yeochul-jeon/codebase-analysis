@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/tsconfig.tsbuildinfo
+data
+docs
+.git
+.github
+*.md
+.claude
+.DS_Store
+docker/.env

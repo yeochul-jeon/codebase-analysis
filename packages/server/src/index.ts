@@ -1,7 +1,2 @@
-import { Hono } from 'hono';
-
-const app = new Hono();
-
-app.get('/healthz', (c) => c.json({ status: 'ok' }));
-
-export default app;
+export { createApp } from './app.js';
+export type { AppDeps } from './app.js';

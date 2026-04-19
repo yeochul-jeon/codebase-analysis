@@ -172,7 +172,7 @@ function extractRefsFromBody(
       const identifiers = n.children.filter(c => c.type === 'identifier');
       const nameNode = identifiers[identifiers.length - 1];
       if (nameNode) {
-        result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call' });
+        result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
       }
     }
     for (const child of n.children) walk(child);

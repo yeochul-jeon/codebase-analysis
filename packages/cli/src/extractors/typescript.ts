@@ -170,7 +170,7 @@ function extractRefsFromBody(
       const fn = n.childForFieldName('function');
       if (fn) {
         const callee = extractCallee(fn);
-        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call' });
+        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
       }
     }
 
@@ -179,7 +179,7 @@ function extractRefsFromBody(
       const ctor = n.childForFieldName('constructor');
       if (ctor) {
         const callee = extractCallee(ctor);
-        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call' });
+        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
       }
     }
 
@@ -189,7 +189,7 @@ function extractRefsFromBody(
       if (nameNode) {
         const tag = text(nameNode).split('.')[0]; // <Layout.Header> → "Layout"
         if (/^[A-Z]/.test(tag)) {
-          result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call' });
+          result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
         }
       }
     }
@@ -198,7 +198,7 @@ function extractRefsFromBody(
     if (n.type === 'type_identifier') {
       const typeName = n.text;
       if (!PRIMITIVE_TYPES.has(typeName)) {
-        result.refs.push({ callerName, calleeName: typeName, kind: 'type_reference' });
+        result.refs.push({ callerName, calleeName: typeName, kind: 'type_reference', line: n.startPosition.row + 1 });
       }
     }
 

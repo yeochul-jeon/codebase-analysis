@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>codebase-analysis</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>codebase-analysis</h1>
+  </header>
+  <main>
+    <form id="search-form">
+      <input name="repo" placeholder="repo name" required>
+      <input name="commit" placeholder="commit sha (optional)">
+      <input name="q" placeholder="search symbols…" required autofocus>
+      <button type="submit">Search</button>
+    </form>
+    <div id="error" hidden></div>
+    <ul id="results"></ul>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

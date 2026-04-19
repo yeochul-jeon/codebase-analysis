@@ -3,9 +3,11 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "tsc --project tsconfig.json && cp -r src/storage/db/migrations dist/storage/db/migrations",
+    "build": "tsc --project tsconfig.json && cp -r src/storage/db/migrations dist/storage/db/migrations && cp -r src/public dist/public",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx watch src/dev.ts"
+    "start": "node dist/dev.js",
+    "dev": "tsx watch src/dev.ts",
+    "test": "tsx src/storage/__tests__/smoke.ts && tsx src/routes/__tests__/smoke.ts"
   },
   "dependencies": {
     "@codebase-analysis/shared": "workspace:*",

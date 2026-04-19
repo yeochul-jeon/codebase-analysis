@@ -53,10 +53,16 @@ export interface DbAdapter {
    */
   getIndex(repoId: number, commitSha: string): DbIndex | undefined;
 
+  /** Look up an index by its primary key. */
+  getIndexById(indexId: number): DbIndex | undefined;
+
   createIndex(repoId: number, commitSha: string, branch?: string): DbIndex;
 
   /** Delete symbols + occurrences for an index to allow full replace (ADR-010). */
   deleteIndexData(indexId: number): void;
+
+  /** Reset status to 'uploading' for an existing uploading/failed index (ADR-010 replay). */
+  resetIndexToUploading(indexId: number): void;
 
   markIndexReady(indexId: number, fileCount: number): void;
   markIndexFailed(indexId: number): void;
@@ -75,6 +81,13 @@ export interface DbAdapter {
   getSymbolByKey(symbolKey: string): DbSymbol | undefined;
   getFileSymbols(repoId: number, commitSha: string, filePath: string): DbSymbol[];
   getOccurrences(calleeName: string, repoId: number, commitSha: string): DbOccurrence[];
+
+  /** Read-only repo lookup — does not create. */
+  getRepoByName(name: string): DbRepo | undefined;
+  /** Look up the latest index_id for a repo+branch (ADR-009). */
+  getRepoHead(repoId: number, branch: string): { index_id: number } | undefined;
+  /** List distinct file paths that have at least one symbol in an index. */
+  getFilesByIndex(indexId: number): string[];
 
   close(): void;
 }

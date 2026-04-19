@@ -25,6 +25,39 @@ export interface ExtractedRef {
   callerName: string;
   calleeName: string;
   kind: 'call' | 'field_access' | 'type_reference' | 'annotation';
+  line: number;  // 1-based source line of the reference node
+}
+
+export interface PackedSymbol {
+  symbol_key: string;         // sha256 hex 64 chars
+  parent_key: string | null;
+  file_path: string;          // repo-relative POSIX path
+  name: string;
+  kind: string;
+  signature: string | null;
+  start_line: number;
+  end_line: number;
+  modifiers: string[];
+  annotations: string[];
+}
+
+export interface PackedOccurrence {
+  caller_key: string | null;
+  callee_name: string;
+  kind: 'call' | 'field_access' | 'type_reference' | 'annotation';
+  file_path: string;
+  line: number;
+}
+
+export interface PackedIndex {
+  schema_version: 1;
+  repo_name: string;
+  commit_sha: string;
+  branch: string | null;
+  generated_at: number;       // unix seconds
+  symbols: PackedSymbol[];
+  occurrences: PackedOccurrence[];
+  files: string[];            // POSIX paths that contributed symbols
 }
 
 export interface ExtractionResult {

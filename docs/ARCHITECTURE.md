@@ -31,7 +31,7 @@ codebase-analysis/
 │   │       ├── packer/      # index.json + source.zip 패키징
 │   │       └── commands/    # analyze, push, status
 │   ├── shared/              # 공통 타입 · zod 스키마 · 상수
-│   └── mcp-server/          # 독립 실행 MCP stdio shim (선택)
+│   └── mcp-server/          # 독립 실행 MCP stdio shim
 ├── docs/                    # ADR, PRD, ARCHITECTURE, work-log, OPEN-QUESTIONS
 ├── docker/                  # Dockerfile + docker-compose.yml (Variant A)
 ├── infra/                   # CDK/Terraform 스니펫 (Variant B, 선택)
@@ -88,6 +88,7 @@ codebase-analysis/
 │ MCP cli  │  MCP tool call        │ FTS5 / tsvector   │ ─▶ [symbols 테이블]
 └──────────┘                       │ zip entry 추출    │ ─▶ [source.zip]
                                    └───────────────────┘
+MCP stdio (launched by Claude Desktop) → mcp-server → fetch → Hono 서버
 ```
 
 **커밋 해석 규약** (ADR-009): `commit 지정 → branch 지정 → repos.default_branch`. 비결정적 `ORDER BY created_at DESC` 금지.
