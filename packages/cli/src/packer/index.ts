@@ -29,15 +29,15 @@ export function pack(input: PackInput): PackOutput {
   const filePaths: string[] = [];
 
   for (const file of files) {
-    const { symbols, callerMap } = resolveFileSymbols(
+    const { symbols, callerMap, callerNodeMap } = resolveFileSymbols(
       repoName,
       commitSha,
       file.path,
       file.extraction.symbols,
     );
-    const occurrences = resolveFileOccurrences(file.path, file.extraction.refs, callerMap);
+    const occurrences = resolveFileOccurrences(file.path, file.extraction.refs, callerMap, callerNodeMap);
 
-    if (symbols.length > 0) {
+    if (symbols.length > 0 || occurrences.length > 0) {
       allSymbols.push(...symbols);
       allOccurrences.push(...occurrences);
       filePaths.push(file.path);

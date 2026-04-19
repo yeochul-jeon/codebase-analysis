@@ -162,6 +162,7 @@ function extractCallee(node: Parser.SyntaxNode): string | null {
 function extractRefsFromBody(
   node: Parser.SyntaxNode,
   callerName: string,
+  callerNodeId: number | null,
   result: ExtractionResult
 ): void {
   function walk(n: Parser.SyntaxNode): void {
@@ -170,7 +171,7 @@ function extractRefsFromBody(
       const fn = n.childForFieldName('function');
       if (fn) {
         const callee = extractCallee(fn);
-        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
+        if (callee) result.refs.push({ callerName, callerNodeId, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
       }
     }
 
@@ -179,7 +180,7 @@ function extractRefsFromBody(
       const ctor = n.childForFieldName('constructor');
       if (ctor) {
         const callee = extractCallee(ctor);
-        if (callee) result.refs.push({ callerName, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
+        if (callee) result.refs.push({ callerName, callerNodeId, calleeName: callee, kind: 'call', line: n.startPosition.row + 1 });
       }
     }
 
@@ -189,7 +190,7 @@ function extractRefsFromBody(
       if (nameNode) {
         const tag = text(nameNode).split('.')[0]; // <Layout.Header> → "Layout"
         if (/^[A-Z]/.test(tag)) {
-          result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
+          result.refs.push({ callerName, callerNodeId, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
         }
       }
     }
@@ -198,7 +199,7 @@ function extractRefsFromBody(
     if (n.type === 'type_identifier') {
       const typeName = n.text;
       if (!PRIMITIVE_TYPES.has(typeName)) {
-        result.refs.push({ callerName, calleeName: typeName, kind: 'type_reference', line: n.startPosition.row + 1 });
+        result.refs.push({ callerName, callerNodeId, calleeName: typeName, kind: 'type_reference', line: n.startPosition.row + 1 });
       }
     }
 
@@ -273,7 +274,7 @@ function extractFromDeclarator(
       modifiers, annotations: [],
       _nodeId: myId,
     } as SymbolEntry);
-    extractRefsFromBody(valueNode, name, result);
+    extractRefsFromBody(valueNode, name, myId, result);
 
   } else if (valueNode?.type === 'class' || valueNode?.type === 'class_expression') {
     // tree-sitter-javascript uses 'class' for class expressions; 'class_expression' is for TS
@@ -356,7 +357,7 @@ function extractCJSExports(
       modifiers: ['export'], annotations: [],
       _nodeId: myId,
     } as SymbolEntry);
-    extractRefsFromBody(right, exportName, result);
+    extractRefsFromBody(right, exportName, myId, result);
 
   } else if (right.type === 'class' || right.type === 'class_expression') {
     // tree-sitter-javascript uses 'class' for class expressions
@@ -441,7 +442,7 @@ function extractSymbolsFromNode(
           _nodeId: myId,
         } as SymbolEntry);
         if (symKind === 'function') {
-          extractRefsFromBody(valueNode, 'default', result);
+          extractRefsFromBody(valueNode, 'default', myId, result);
         } else {
           const body = valueNode.children.find(c => c.type === 'class_body');
           if (body) {
@@ -509,7 +510,7 @@ function extractSymbolsFromNode(
 
   // Extract call/JSX/type refs from function and method bodies
   if (['function', 'method', 'constructor', 'getter', 'setter'].includes(kind)) {
-    extractRefsFromBody(node, name, result);
+    extractRefsFromBody(node, name, myId, result);
   }
 
   // Recurse into container bodies (class/interface/enum/namespace members become children)

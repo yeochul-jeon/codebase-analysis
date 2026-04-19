@@ -7,6 +7,7 @@ import { extractFromJS } from '../../extractors/typescript.js';
 import { extractFromJava } from '../../extractors/java.js';
 import { parseFile } from '../../parser/parser.js';
 import { pack } from '../index.js';
+import { resolveFileOccurrences, resolveFileSymbols } from '../resolve.js';
 
 // Create temp dir for abs paths
 const tmpDir = mkdtempSync(join(tmpdir(), 'packer-smoke-'));
@@ -38,11 +39,17 @@ public class Counter {
 }
 `;
 
+const refsOnlySource = `
+hello();
+`;
+
 // Write actual temp files so zip stat succeeds
 const absFoo = join(tmpDir, 'foo.ts');
 const absCounter = join(tmpDir, 'Counter.java');
+const absRefsOnly = join(tmpDir, 'calls.ts');
 writeFileSync(absFoo, tsSource, 'utf8');
 writeFileSync(absCounter, javaSource, 'utf8');
+writeFileSync(absRefsOnly, refsOnlySource, 'utf8');
 
 // ─── Extract ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +58,17 @@ const tsExtraction = extractFromJS(tsTree, 'typescript');
 
 const javaTree = parseFile('src/Counter.java', javaSource)!;
 const javaExtraction = extractFromJava(javaTree);
+
+const refsOnlyExtraction = {
+  symbols: [],
+  dependencies: [],
+  refs: [{
+    callerName: 'top-level',
+    calleeName: 'hello',
+    kind: 'call' as const,
+    line: 1,
+  }],
+};
 
 const REPO = 'test-repo';
 const SHA = 'aabbcc';
@@ -63,6 +81,7 @@ const output = pack({
   files: [
     { path: 'src/foo.ts', absPath: absFoo, source: tsSource, extraction: tsExtraction },
     { path: 'src/Counter.java', absPath: absCounter, source: javaSource, extraction: javaExtraction },
+    { path: 'src/calls.ts', absPath: absRefsOnly, source: refsOnlySource, extraction: refsOnlyExtraction },
   ],
 });
 
@@ -76,7 +95,16 @@ check('commit_sha matches', indexJson.commit_sha === SHA);
 check('branch matches', indexJson.branch === 'main');
 check('symbols is array', Array.isArray(indexJson.symbols));
 check('occurrences is array', Array.isArray(indexJson.occurrences));
-check('files includes both paths', indexJson.files.includes('src/foo.ts') && indexJson.files.includes('src/Counter.java'));
+check(
+  'files includes symbol and refs-only paths',
+  indexJson.files.includes('src/foo.ts') &&
+    indexJson.files.includes('src/Counter.java') &&
+    indexJson.files.includes('src/calls.ts'),
+);
+check(
+  'refs-only file occurrences are preserved',
+  indexJson.occurrences.some((o) => o.file_path === 'src/calls.ts' && o.callee_name === 'hello'),
+);
 
 // ─── symbol_key format ────────────────────────────────────────────────────────
 
@@ -110,6 +138,83 @@ if (fooSym) {
   check('Foo.parent_key is null (top-level)', fooSym.parent_key === null);
 }
 
+// ─── duplicate symbol_key should not orphan surviving children ──────────────
+
+const duplicateResolved = resolveFileSymbols('dup-repo', 'dup-sha', 'src/dup.ts', [
+  {
+    name: 'Outer',
+    kind: 'class',
+    signature: null,
+    parent_id: null,
+    start_line: 1,
+    end_line: 10,
+    modifiers: [],
+    annotations: [],
+    _nodeId: 1,
+  },
+  {
+    name: 'Outer',
+    kind: 'class',
+    signature: null,
+    parent_id: null,
+    start_line: 1,
+    end_line: 10,
+    modifiers: [],
+    annotations: [],
+    _nodeId: 99,
+  },
+  {
+    name: 'child',
+    kind: 'method',
+    signature: 'child(): void',
+    parent_id: 1,
+    start_line: 2,
+    end_line: 3,
+    modifiers: [],
+    annotations: [],
+    _nodeId: 2,
+  },
+]);
+
+const dupOuter = duplicateResolved.symbols.find((s) => s.name === 'Outer' && s.kind === 'class');
+const dupChild = duplicateResolved.symbols.find((s) => s.name === 'child' && s.kind === 'method');
+check('duplicate parent survives once', duplicateResolved.symbols.filter((s) => s.name === 'Outer').length === 1);
+check('duplicate child remains present', dupChild !== undefined);
+check('duplicate child keeps surviving parent_key', dupChild?.parent_key === dupOuter?.symbol_key);
+
+const overloadedResolved = resolveFileSymbols('dup-repo', 'dup-sha', 'src/overload.ts', [
+  {
+    name: 'run',
+    kind: 'method',
+    signature: 'run(): void',
+    parent_id: null,
+    start_line: 1,
+    end_line: 2,
+    modifiers: [],
+    annotations: [],
+    _nodeId: 10,
+  },
+  {
+    name: 'run',
+    kind: 'method',
+    signature: 'run(value: string): void',
+    parent_id: null,
+    start_line: 5,
+    end_line: 6,
+    modifiers: [],
+    annotations: [],
+    _nodeId: 11,
+  },
+]);
+const overloadedOccurrences = resolveFileOccurrences(
+  'src/overload.ts',
+  [{ callerName: 'run', callerNodeId: 11, calleeName: 'helper', kind: 'call', line: 5 }],
+  overloadedResolved.callerMap,
+  overloadedResolved.callerNodeMap,
+);
+const secondRun = overloadedResolved.symbols.find((s) => s.name === 'run' && s.start_line === 5);
+check('callerNodeId maps occurrence to correct overloaded symbol', overloadedOccurrences[0]?.caller_key === secondRun?.symbol_key);
+
 // ─── determinism + isolation ──────────────────────────────────────────────────
 
 const output2 = pack({
@@ -138,6 +243,7 @@ const zip = new AdmZip(zipBuffer);
 const entries = zip.getEntries().map(e => e.entryName);
 check('zip contains src/foo.ts', entries.includes('src/foo.ts'));
 check('zip contains src/Counter.java', entries.includes('src/Counter.java'));
+check('zip contains src/calls.ts', entries.includes('src/calls.ts'));
 check('zip entry count matches files', entries.length === indexJson.files.length);
 
 // ─── Result ───────────────────────────────────────────────────────────────────

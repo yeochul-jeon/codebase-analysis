@@ -14,7 +14,7 @@ export class SqliteAdapter implements DbAdapter {
 
   // ── Repo ───────────────────────────────────────────────────────────────────
 
-  getOrCreateRepo(name: string, defaultBranch = 'main'): DbRepo {
+  async getOrCreateRepo(name: string, defaultBranch = 'main'): Promise<DbRepo> {
     this.db
       .prepare('INSERT OR IGNORE INTO repos(name, default_branch) VALUES (?, ?)')
       .run(name, defaultBranch);
@@ -23,51 +23,51 @@ export class SqliteAdapter implements DbAdapter {
 
   // ── Index lifecycle ────────────────────────────────────────────────────────
 
-  getIndex(repoId: number, commitSha: string): DbIndex | undefined {
+  async getIndex(repoId: number, commitSha: string): Promise<DbIndex | undefined> {
     return this.db
       .prepare('SELECT * FROM indexes WHERE repo_id = ? AND commit_sha = ?')
       .get(repoId, commitSha) as DbIndex | undefined;
   }
 
-  getIndexById(indexId: number): DbIndex | undefined {
+  async getIndexById(indexId: number): Promise<DbIndex | undefined> {
     return this.db
       .prepare('SELECT * FROM indexes WHERE id = ?')
       .get(indexId) as DbIndex | undefined;
   }
 
-  createIndex(repoId: number, commitSha: string, branch?: string): DbIndex {
+  async createIndex(repoId: number, commitSha: string, branch?: string): Promise<DbIndex> {
     const result = this.db
       .prepare('INSERT INTO indexes(repo_id, commit_sha, branch) VALUES (?, ?, ?) RETURNING *')
       .get(repoId, commitSha, branch ?? null) as DbIndex;
     return result;
   }
 
-  deleteIndexData(indexId: number): void {
+  async deleteIndexData(indexId: number): Promise<void> {
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM occurrences WHERE index_id = ?').run(indexId);
       this.db.prepare('DELETE FROM symbols WHERE index_id = ?').run(indexId);
     })();
   }
 
-  markIndexReady(indexId: number, fileCount: number): void {
+  async markIndexReady(indexId: number, fileCount: number): Promise<void> {
     this.db
       .prepare("UPDATE indexes SET status = 'ready', file_count = ? WHERE id = ?")
       .run(fileCount, indexId);
   }
 
-  markIndexFailed(indexId: number): void {
+  async markIndexFailed(indexId: number): Promise<void> {
     this.db
       .prepare("UPDATE indexes SET status = 'failed' WHERE id = ?")
       .run(indexId);
   }
 
-  resetIndexToUploading(indexId: number): void {
+  async resetIndexToUploading(indexId: number): Promise<void> {
     this.db
       .prepare("UPDATE indexes SET status = 'uploading', file_count = NULL WHERE id = ?")
       .run(indexId);
   }
 
-  updateRepoHead(repoId: number, branch: string, indexId: number): void {
+  async updateRepoHead(repoId: number, branch: string, indexId: number): Promise<void> {
     this.db
       .prepare('INSERT OR REPLACE INTO repo_head(repo_id, branch, index_id) VALUES (?, ?, ?)')
       .run(repoId, branch, indexId);
@@ -75,7 +75,7 @@ export class SqliteAdapter implements DbAdapter {
 
   // ── Write ──────────────────────────────────────────────────────────────────
 
-  insertSymbols(symbols: DbSymbol[]): void {
+  async insertSymbols(symbols: DbSymbol[]): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO symbols
         (index_id, symbol_key, file_path, name, kind, signature,
@@ -90,7 +90,7 @@ export class SqliteAdapter implements DbAdapter {
     insert(symbols);
   }
 
-  insertOccurrences(occurrences: DbOccurrence[]): void {
+  async insertOccurrences(occurrences: DbOccurrence[]): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT INTO occurrences
         (index_id, caller_key, callee_name, kind, file_path, line)
@@ -105,8 +105,8 @@ export class SqliteAdapter implements DbAdapter {
 
   // ── Read ───────────────────────────────────────────────────────────────────
 
-  searchSymbols(repoId: number, commitSha: string, query: string, limit = 20): DbSymbol[] {
-    const idx = this.getIndex(repoId, commitSha);
+  async searchSymbols(repoId: number, commitSha: string, query: string, limit = 20): Promise<DbSymbol[]> {
+    const idx = await this.getIndex(repoId, commitSha);
     if (!idx) return [];
     return this.db.prepare(`
       SELECT s.*
@@ -117,46 +117,55 @@ export class SqliteAdapter implements DbAdapter {
     `).all(`name:${query}*`, idx.id, limit) as DbSymbol[];
   }
 
-  getSymbolByKey(symbolKey: string): DbSymbol | undefined {
+  async getSymbolByKey(symbolKey: string): Promise<DbSymbol | undefined> {
     return this.db
       .prepare('SELECT * FROM symbols WHERE symbol_key = ?')
       .get(symbolKey) as DbSymbol | undefined;
   }
 
-  getFileSymbols(repoId: number, commitSha: string, filePath: string): DbSymbol[] {
-    const idx = this.getIndex(repoId, commitSha);
+  async getFileSymbols(repoId: number, commitSha: string, filePath: string): Promise<DbSymbol[]> {
+    const idx = await this.getIndex(repoId, commitSha);
     if (!idx) return [];
     return this.db
       .prepare('SELECT * FROM symbols WHERE index_id = ? AND file_path = ?')
       .all(idx.id, filePath) as DbSymbol[];
   }
 
-  getOccurrences(calleeName: string, repoId: number, commitSha: string): DbOccurrence[] {
-    const idx = this.getIndex(repoId, commitSha);
+  async getOccurrences(calleeName: string, repoId: number, commitSha: string): Promise<DbOccurrence[]> {
+    const idx = await this.getIndex(repoId, commitSha);
     if (!idx) return [];
     return this.db
       .prepare('SELECT * FROM occurrences WHERE callee_name = ? AND index_id = ?')
       .all(calleeName, idx.id) as DbOccurrence[];
   }
 
-  getRepoByName(name: string): DbRepo | undefined {
+  async getRepoByName(name: string): Promise<DbRepo | undefined> {
     return this.db.prepare('SELECT * FROM repos WHERE name = ?').get(name) as DbRepo | undefined;
   }
 
-  getRepoHead(repoId: number, branch: string): { index_id: number } | undefined {
+  async getRepoHead(repoId: number, branch: string): Promise<{ index_id: number } | undefined> {
     return this.db
       .prepare('SELECT index_id FROM repo_head WHERE repo_id = ? AND branch = ?')
       .get(repoId, branch) as { index_id: number } | undefined;
   }
 
-  getFilesByIndex(indexId: number): string[] {
-    const rows = this.db
-      .prepare('SELECT DISTINCT file_path FROM symbols WHERE index_id = ? ORDER BY file_path')
-      .all(indexId) as { file_path: string }[];
+  async getFilesByIndex(indexId: number): Promise<string[]> {
+    const rows = this.db.prepare(`
+      SELECT DISTINCT file_path FROM symbols WHERE index_id = ?
+      UNION
+      SELECT DISTINCT file_path FROM occurrences WHERE index_id = ?
+      ORDER BY file_path
+    `).all(indexId, indexId) as { file_path: string }[];
     return rows.map((r) => r.file_path);
   }
 
-  close(): void {
+  async getLatestReadyIndex(repoId: number): Promise<DbIndex | undefined> {
+    return this.db
+      .prepare("SELECT * FROM indexes WHERE repo_id = ? AND status = 'ready' ORDER BY id DESC LIMIT 1")
+      .get(repoId) as DbIndex | undefined;
+  }
+
+  async close(): Promise<void> {
     this.db.close();
   }
 }

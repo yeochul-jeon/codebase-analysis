@@ -122,6 +122,84 @@
 
 ---
 
+## FT-005: Variant B Contract Test ✅ 완료 (2026-04-19)
+
+**목표**: `pg.ts`(PostgreSQL)와 `s3.ts`(S3) 어댑터가 `sqlite.ts`/`fs.ts`와 동일한 입력에 동일한 응답을 반환함을 자동 검증.
+
+**완료된 작업 (ADR-022·023, OQ-008 Option B)**:
+1. ✅ `packages/server/src/storage/__tests__/contract.ts` — `runDbContract`(11 checks) + `runBlobContract`(4 checks) 하네스
+2. ✅ `smoke.ts`가 contract 하네스를 호출하도록 단순화
+3. ✅ `packages/server/src/storage/__tests__/contract-variant-b.ts` — PgAdapter + S3BlobAdapter 실행 드라이버 (`RUN_VARIANT_B=1` 게이트)
+4. ✅ `PgAdapter` 실구현 (DbAdapter async 전환 포함, ADR-023) + PG migrations (`migrations-pg/`)
+5. ✅ `S3BlobAdapter` 실구현
+6. ✅ docker-compose `variant-b` profile (postgres:16 + minio + minio-init)
+
+**남은 작업 (후속 세션)**:
+- CI에서 `PG_URL`/`S3_BUCKET` 주입 스크립트
+- Variant B 모드 실레포 dogfooding E2E
+
+**실행**: `RUN_VARIANT_B=1 PG_URL=... S3_BUCKET=... pnpm -F @codebase-analysis/server test:variant-b`  
+→ 15 checks: 11 db + 4 blob
+
+---
+
+## FT-006: 성능 기준선 벤치마크
+
+**목표**: 실측 데이터로 PRD 성능 목표(p95 < 300ms, 레포 50개·50만 심볼)의 실현 가능성 검증.
+
+**동기**: 단일 프로세스 + `better-sqlite3` 동기 호출 + zip 본문 추출의 경합 지점이 설계상 위험으로 남아 있다. 실측 없이 목표를 약속할 수 없다.
+
+**측정 대상**:
+- FTS5 검색 latency — 50만 심볼 기준 p50/p95/p99
+- `adm-zip getEntry()` 메모리 사용량 — 대형 zip (> 100MB) 기준
+- 동시 업로드 + 조회 시 read latency 저하 (10 concurrent requests)
+- FTS5 트리거 유지 비용 — 대용량 `insertSymbols` 후 검색 속도
+
+**범위 (최소 착수 스펙)**:
+1. `scripts/bench.ts` 작성 — k6 또는 autocannon 기반
+2. 레포 10개·10만 심볼 fixture 생성 (실제 데이터 또는 합성)
+3. 기준선 수치 `docs/BENCH-RESULTS.md`에 기록
+
+**트리거 조건**: 레포 10개 이상 실운영 시작 또는 검색 latency 불만 보고 발생 시  
+**예상 공수**: 2~3일 (fixture 생성 포함)
+
+---
+
+## FT-007: 검색 계약 확장
+
+**목표**: `/v1/search`에 파일 경로 필터, 복합 쿼리 지원 추가.
+
+**동기**: 현재 `q` 파라미터는 영문자·숫자·`_`만 허용. 실사용에서 "왜 이 검색은 안 되지?"가 반복될 수 있다.
+
+**범위 (최소 착수 스펙)**:
+1. `path=` 파라미터 추가 — `src/service.ts` 또는 `src/**/*.ts` glob 필터
+2. FTS5 `MATCH` 문법에서 `AND` / `OR` 연산자 허용 (현재 단어 하나만)
+3. 기존 `q` 제약 완화 — 대소문자 혼용, 특수문자 일부 허용
+4. `GET /v1/repos/:name/file-symbols` 확장 — 여러 파일 경로 배열 지원 (선택)
+
+**의존 결정**: OQ-009 합의 — 현상 유지 vs 확장  
+**트리거 조건**: OQ-009가 "Option B"로 결정 시  
+**예상 공수**: 1~2일
+
+---
+
+## FT-008: 감사 로그 · 토큰 회전
+
+**목표**: 운영 환경에서 쓰기 이벤트 감사 가능성 확보 및 토큰 관리 개선.
+
+**동기**: 현재 `ANALYZE_UPLOAD_TOKEN`은 단일 정적 문자열. 토큰 노출 시 서버 재시작 없이 무효화 불가. 사용자 단위 식별도 없다.
+
+**범위 (최소 착수 스펙)**:
+1. 쓰기 요청마다 `repo_name`, 타임스탬프, IP를 서버 로그에 기록 (감사 로그 v1)
+2. `ANALYZE_UPLOAD_TOKEN`을 쉼표 구분 다중 값으로 확장 (토큰 교체 시 downtime 없음)
+3. 토큰별 별칭(`token_id`) 지정 → 감사 로그에 token_id 포함
+
+**의존 결정**: OQ-008 (사외망 운영 수요 발생 여부)  
+**트리거 조건**: 사외망 또는 다중 팀 운영 수요 발생 시. 사내망 전용 운영에서는 불필요.  
+**예상 공수**: 1~2일
+
+---
+
 ## 공통 원칙
 
 1. **primary store는 PostgreSQL/SQLite 유지** — 벡터·그래프는 파생 projection plane으로만 추가 (CMS ADR-015 정책 계승)

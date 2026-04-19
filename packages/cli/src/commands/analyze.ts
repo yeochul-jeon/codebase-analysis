@@ -8,6 +8,13 @@ import { detectLanguage, parseFile } from '../parser/parser.js';
 import { pack } from '../packer/index.js';
 import { collectFiles } from '../walker/collect.js';
 
+export function shouldPackExtraction(extraction: {
+  symbols: unknown[];
+  refs: unknown[];
+}): boolean {
+  return extraction.symbols.length > 0 || extraction.refs.length > 0;
+}
+
 function gitExec(args: string[], cwd: string): string | null {
   try {
     return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
@@ -87,7 +94,7 @@ export function registerAnalyzeCommand(program: Command): void {
         const extraction =
           lang === 'java' ? extractFromJava(tree) : extractFromJS(tree, lang);
 
-        if (extraction.symbols.length === 0) continue;
+        if (!shouldPackExtraction(extraction)) continue;
 
         packInputFiles.push({ path: relPath, absPath, source, extraction });
       }

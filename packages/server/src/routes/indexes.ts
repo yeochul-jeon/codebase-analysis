@@ -24,19 +24,19 @@ export function createIndexesRouter(
     if (!body.success) return c.json({ error: 'Invalid body' }, 400);
 
     const { commit_sha, branch = null } = body.data;
-    const repo = db.getOrCreateRepo(name);
-    const existing = db.getIndex(repo.id, commit_sha);
+    const repo = await db.getOrCreateRepo(name, branch ?? 'main');
+    const existing = await db.getIndex(repo.id, commit_sha);
 
     let indexId: number;
     if (existing) {
       if (existing.status === 'ready') {
         return c.json({ index_id: existing.id, status: 'ready' }, 409);
       }
-      db.deleteIndexData(existing.id);
-      db.resetIndexToUploading(existing.id);
+      await db.deleteIndexData(existing.id);
+      await db.resetIndexToUploading(existing.id);
       indexId = existing.id;
     } else {
-      const created = db.createIndex(repo.id, commit_sha, branch ?? undefined);
+      const created = await db.createIndex(repo.id, commit_sha, branch ?? undefined);
       indexId = created.id;
     }
 
@@ -61,6 +61,14 @@ export function createIndexesRouter(
     }
 
     const payload = parsed.data;
+    const idx = await db.getIndexById(indexId);
+    if (!idx) return c.json({ error: 'Index not found' }, 404);
+
+    const repo = await db.getRepoByName(payload.repo_name);
+    const branchMatches = payload.branch === (idx.branch ?? null);
+    if (!repo || repo.id !== idx.repo_id || payload.commit_sha !== idx.commit_sha || !branchMatches) {
+      return c.json({ error: 'Index payload does not match target index' }, 409);
+    }
 
     const symbols: DbSymbol[] = payload.symbols.map((s) => ({
       index_id: indexId,
@@ -85,8 +93,8 @@ export function createIndexesRouter(
       line: o.line,
     }));
 
-    db.insertSymbols(symbols);
-    db.insertOccurrences(occurrences);
+    await db.insertSymbols(symbols);
+    await db.insertOccurrences(occurrences);
 
     return c.json({ symbol_count: symbols.length, occurrence_count: occurrences.length });
   });
@@ -96,7 +104,7 @@ export function createIndexesRouter(
     const indexId = Number(c.req.param('id'));
     if (!Number.isInteger(indexId)) return c.json({ error: 'Invalid index id' }, 400);
 
-    const idx = db.getIndexById(indexId);
+    const idx = await db.getIndexById(indexId);
     if (!idx) return c.json({ error: 'Index not found' }, 404);
 
     const ab = await c.req.arrayBuffer();
@@ -119,15 +127,27 @@ export function createIndexesRouter(
     if (!body.success) return c.json({ error: 'Invalid body' }, 400);
 
     const { status, file_count } = body.data;
+    const idx = await db.getIndexById(indexId);
+    if (!idx) return c.json({ error: 'Index not found' }, 404);
 
     if (status === 'ready') {
-      db.markIndexReady(indexId, file_count ?? 0);
-      const idx = db.getIndexById(indexId);
-      if (idx?.branch) {
-        db.updateRepoHead(idx.repo_id, idx.branch, indexId);
+      if (idx.status !== 'uploading') {
+        return c.json({ error: 'Only uploading indexes can be finalized' }, 409);
+      }
+
+      const files = await db.getFilesByIndex(indexId);
+      const hasIndexData = files.length > 0;
+      const hasBlob = await blob.hasBlob(idx.repo_id, indexId);
+      if (!hasIndexData || !hasBlob) {
+        return c.json({ error: 'Index is incomplete: index-json and source-zip are both required' }, 409);
+      }
+
+      await db.markIndexReady(indexId, file_count ?? 0);
+      if (idx.branch) {
+        await db.updateRepoHead(idx.repo_id, idx.branch, indexId);
       }
     } else {
-      db.markIndexFailed(indexId);
+      await db.markIndexFailed(indexId);
     }
 
     return c.json({ status });

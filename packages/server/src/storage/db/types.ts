@@ -43,7 +43,7 @@ export interface DbOccurrence {
 export interface DbAdapter {
   // ── Repo ──────────────────────────────────────────────────────────────────
 
-  getOrCreateRepo(name: string, defaultBranch?: string): DbRepo;
+  getOrCreateRepo(name: string, defaultBranch?: string): Promise<DbRepo>;
 
   // ── Index lifecycle (ADR-010 idempotency) ─────────────────────────────────
 
@@ -51,43 +51,45 @@ export interface DbAdapter {
    * Returns existing index for (repoId, commitSha) or undefined.
    * Callers implement ADR-010: if status is 'ready', reuse; if 'uploading'/'failed', replace.
    */
-  getIndex(repoId: number, commitSha: string): DbIndex | undefined;
+  getIndex(repoId: number, commitSha: string): Promise<DbIndex | undefined>;
 
   /** Look up an index by its primary key. */
-  getIndexById(indexId: number): DbIndex | undefined;
+  getIndexById(indexId: number): Promise<DbIndex | undefined>;
 
-  createIndex(repoId: number, commitSha: string, branch?: string): DbIndex;
+  createIndex(repoId: number, commitSha: string, branch?: string): Promise<DbIndex>;
 
   /** Delete symbols + occurrences for an index to allow full replace (ADR-010). */
-  deleteIndexData(indexId: number): void;
+  deleteIndexData(indexId: number): Promise<void>;
 
   /** Reset status to 'uploading' for an existing uploading/failed index (ADR-010 replay). */
-  resetIndexToUploading(indexId: number): void;
+  resetIndexToUploading(indexId: number): Promise<void>;
 
-  markIndexReady(indexId: number, fileCount: number): void;
-  markIndexFailed(indexId: number): void;
+  markIndexReady(indexId: number, fileCount: number): Promise<void>;
+  markIndexFailed(indexId: number): Promise<void>;
 
   /** Upsert repo_head row (ADR-009). */
-  updateRepoHead(repoId: number, branch: string, indexId: number): void;
+  updateRepoHead(repoId: number, branch: string, indexId: number): Promise<void>;
 
   // ── Write (analyze push, via REST in Session 5) ───────────────────────────
 
-  insertSymbols(symbols: DbSymbol[]): void;
-  insertOccurrences(occurrences: DbOccurrence[]): void;
+  insertSymbols(symbols: DbSymbol[]): Promise<void>;
+  insertOccurrences(occurrences: DbOccurrence[]): Promise<void>;
 
   // ── Read (MCP / REST, Session 5+) ─────────────────────────────────────────
 
-  searchSymbols(repoId: number, commitSha: string, query: string, limit?: number): DbSymbol[];
-  getSymbolByKey(symbolKey: string): DbSymbol | undefined;
-  getFileSymbols(repoId: number, commitSha: string, filePath: string): DbSymbol[];
-  getOccurrences(calleeName: string, repoId: number, commitSha: string): DbOccurrence[];
+  searchSymbols(repoId: number, commitSha: string, query: string, limit?: number): Promise<DbSymbol[]>;
+  getSymbolByKey(symbolKey: string): Promise<DbSymbol | undefined>;
+  getFileSymbols(repoId: number, commitSha: string, filePath: string): Promise<DbSymbol[]>;
+  getOccurrences(calleeName: string, repoId: number, commitSha: string): Promise<DbOccurrence[]>;
 
   /** Read-only repo lookup — does not create. */
-  getRepoByName(name: string): DbRepo | undefined;
+  getRepoByName(name: string): Promise<DbRepo | undefined>;
   /** Look up the latest index_id for a repo+branch (ADR-009). */
-  getRepoHead(repoId: number, branch: string): { index_id: number } | undefined;
+  getRepoHead(repoId: number, branch: string): Promise<{ index_id: number } | undefined>;
   /** List distinct file paths that have at least one symbol in an index. */
-  getFilesByIndex(indexId: number): string[];
+  getFilesByIndex(indexId: number): Promise<string[]>;
+  /** Fallback: most recent ready index for a repo (used when default_branch head is missing). */
+  getLatestReadyIndex(repoId: number): Promise<DbIndex | undefined>;
 
-  close(): void;
+  close(): Promise<void>;
 }

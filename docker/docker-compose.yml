@@ -7,8 +7,19 @@ services:
       - "3000:3000"
     environment:
       ANALYZE_UPLOAD_TOKEN: ${ANALYZE_UPLOAD_TOKEN:?ANALYZE_UPLOAD_TOKEN must be set in docker/.env}
+      # Variant A defaults (sqlite + fs)
+      DB_BACKEND: ${DB_BACKEND:-sqlite}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-fs}
       DB_PATH: /data/index.db
       BLOBS_DIR: /data/blobs
+      # Variant B (set DB_BACKEND=pg and STORAGE_BACKEND=s3 in .env to activate)
+      PG_URL: ${PG_URL:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-0}
       PORT: "3000"
       NODE_ENV: production
     volumes:
@@ -25,5 +36,56 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ── Variant B infrastructure (activate with: docker compose --profile variant-b up) ──
+
+  postgres:
+    profiles: ["variant-b"]
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ca
+      POSTGRES_PASSWORD: ca
+      POSTGRES_DB: ca
+    ports:
+      - "5432:5432"
+    volumes:
+      - ca_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ca -d ca"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    profiles: ["variant-b"]
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ca_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    profiles: ["variant-b"]
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/ca-blobs || true
+      "
+
 volumes:
   ca_data:
+  ca_pg_data:
+  ca_minio_data:

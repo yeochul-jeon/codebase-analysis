@@ -9,7 +9,7 @@
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/index.ts",
-    "test": "tsx src/parser/__tests__/smoke.ts && tsx src/extractors/__tests__/typescript.ts && tsx src/extractors/__tests__/java.ts && tsx src/packer/__tests__/smoke.ts"
+    "test": "tsx src/parser/__tests__/smoke.ts && tsx src/extractors/__tests__/typescript.ts && tsx src/extractors/__tests__/java.ts && tsx src/commands/__tests__/analyze.ts && tsx src/packer/__tests__/smoke.ts"
   },
   "dependencies": {
     "@codebase-analysis/shared": "workspace:*",

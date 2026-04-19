@@ -225,3 +225,40 @@ MVP 속도 최우선. 외부 의존성 최소화. 작동하는 최소 구현을 
 **이유**: CMS 본 프로젝트가 현재 홀드 상태이므로 모노레포 통합의 공유 이점(shared tooling, CI 재사용)이 실질적으로 없다. 독립 레포는 CI/CD 파이프라인, 접근 권한, 배포 단위를 분리해 운영 복잡성을 낮춘다. 이미 Session 1부터 별도 레포로 진행 중이며 전환 비용이 크다.
 
 **트레이드오프**: CMS가 재개될 경우 공통 타입·유틸리티 공유에 npm 패키지 배포 또는 git submodule이 필요해진다. 현 시점에서는 두 프로젝트 간 공유 코드가 없으므로 트레이드오프 비용 0.
+
+---
+
+### ADR-022: Variant B 준비 — env 기반 factory + contract test 하네스 + PG FTS 전략 확정
+
+**결정**: (1) `packages/server/src/storage/factory.ts`에 `createDbAdapter()`·`createBlobAdapter()` factory를 신설해 `DB_BACKEND`(`sqlite`|`pg`)·`STORAGE_BACKEND`(`fs`|`s3`) 환경변수로 어댑터를 선택한다. 기본값은 `sqlite`·`fs`. `dev.ts`는 factory만 호출한다. (2) `packages/server/src/storage/__tests__/contract.ts`에 공유 contract test 하네스(`runDbContract`·`runBlobContract`)를 신설하고, 기존 `smoke.ts`는 이를 호출하도록 단순화한다. (3) PostgreSQL 전환 시 전문검색은 `tsvector + GIN`(prefix, `to_tsquery('Foo:*')`)을 사용한다.
+
+**이유**:
+- **Factory**: `dev.ts`에 하드코딩된 `SqliteAdapter`/`FsBlobAdapter`는 OQ-004 남은 작업에서 "환경변수 기반 어댑터 선택 로직"으로 명시된 사항이다. B 선택 시 현재 stub이 `notImplemented()` throw를 통해 즉시 노출되어 "겉으로 전환 가능한 척"하는 리스크(FINAL-RISKS §4)를 줄인다.
+- **Contract test**: FINAL-RISKS §5가 지적한 "smoke 중심, A 편향 로직 유입 자동 감지 불가" 문제에 대응한다. `runDbContract`/`runBlobContract`를 분리하면 향후 PgAdapter 실구현 시 동일 하네스로 즉시 계약 검증 가능하다(FT-005 부분 완료).
+- **FTS5→tsvector**: `to_tsquery('Foo:*')` prefix 토큰 매칭은 FTS5 `name:Foo*` 컬럼 스코프와 의미적으로 가장 근접하다. `pg_trgm` substring은 별도 수요(OQ-009 / FT-007 범위) 확인 시 추가한다.
+
+**트레이드오프**: factory는 런타임에 `DB_BACKEND=pg`를 설정하면 즉시 stub throw가 발생한다 — 이는 의도된 동작으로, 실구현 전 B 선택을 명확히 차단한다. `DbAdapter` 인터페이스 sync/async 전환은 OQ-008 착수 트리거 도달 시 별도 ADR로 결정한다(현재 이연). contract-variant-b.ts는 `RUN_VARIANT_B=1` 없이는 즉시 종료하므로 CI 영향 없다.
+
+---
+
+### ADR-023: `DbAdapter` 인터페이스 sync → async 전환
+
+**결정**: `DbAdapter`의 20개 메서드 반환 타입을 `Promise<T>`로 통일한다. `SqliteAdapter` 내부 구현은 `better-sqlite3` sync 호출을 그대로 유지하고 각 메서드 앞에 `async` 키워드만 추가한다. `PgAdapter`는 처음부터 `pg.Pool` async API로 구현한다.
+
+**이유**: `pg` 드라이버는 본질적으로 async-only다. 인터페이스가 sync이면 `PgAdapter`에서 Promise를 반환하면서 동시에 `DbAdapter`를 구현할 수 없다. ADR-022는 이 전환을 "OQ-008 착수 트리거 도달 시 별도 ADR"로 이연했으며, OQ-008이 Option B로 결정됨에 따라 본 ADR이 그 후속이다.
+
+**영향 범위**:
+- `packages/server/src/storage/db/types.ts` — 20 메서드 반환형 변경
+- `packages/server/src/storage/db/sqlite.ts` — `async` 키워드 20곳 추가 (내부 sync 유지)
+- `packages/server/src/routes/indexes.ts` — `await` 약 15 지점
+- `packages/server/src/routes/reads.ts` — `resolveIndex` async 전환 + `await` 약 18 지점
+- `packages/server/src/routes/__tests__/smoke.ts` — `await` 3 지점
+- `packages/server/src/storage/__tests__/contract.ts` — `await` 약 15 지점 (이미 `async function`)
+
+**트레이드오프**: SQLite 경로에서 microtask 1회/호출 오버헤드가 추가된다 — 무시 가능. 호출부 변경이 기계적(await 추가)이므로 회귀 위험 낮음. 변경 후 `pnpm typecheck`가 누락된 await를 즉시 검출한다.
+
+**Alternatives rejected**:
+- `DbAdapterSync`/`DbAdapterAsync` 분리 — factory 반환형이 유니온으로 오염되어 호출부가 타입 가드를 요구함.
+- SQLite만 sync, PG만 async — 동일 문제. 라우트 핸들러가 런타임 백엔드에 따라 분기해야 함.
+
+**롤백**: `git revert` 가능. 내부 sync 구현이 유지되므로 인터페이스만 되돌리면 기능 회귀 없음.

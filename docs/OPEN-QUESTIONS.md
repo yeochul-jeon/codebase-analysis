@@ -51,11 +51,16 @@
 - `packages/server/src/storage/db/pg.ts` — `PgAdapter implements DbAdapter` (throw not-implemented)
 - `packages/server/src/storage/blob/s3.ts` — `S3BlobAdapter implements BlobAdapter` (throw not-implemented)
 
-**남은 B-variant 작업** (트리거 도달 시):
+**완료된 B-variant 준비 작업 (ADR-022)**:
+- ✅ `storage/factory.ts` — `DB_BACKEND`/`STORAGE_BACKEND` env 기반 factory 신설 (`dev.ts`가 factory 사용)
+- ✅ `storage/__tests__/contract.ts` — 공유 contract test 하네스 (FT-005 부분 완료)
+- ✅ `storage/__tests__/contract-variant-b.ts` — `RUN_VARIANT_B=1` 게이트 스켈레톤
+
+**남은 B-variant 작업** (OQ-008 "조건부 착수" 결정 후):
 - `pg`/`@aws-sdk/client-s3` 의존성 추가
-- 마이그레이션 툴로 `node-pg-migrate` 도입
-- `PgAdapter`·`S3BlobAdapter` 실구현
-- `app.ts` 환경변수 기반 어댑터 선택 로직 추가
+- 마이그레이션 툴로 `node-pg-migrate` 도입, PG 마이그레이션 SQL 재작성
+- `PgAdapter`·`S3BlobAdapter` 실구현 (DbAdapter async 전환 포함 — 별도 ADR)
+- docker-compose `variant-b` profile (postgres:16 + minio) 추가
 
 **참조**: `docs/ADR.md:ADR-017`, ADR-015(Variant A·B 병행)
 
@@ -71,9 +76,65 @@
 - MVP 3화면 범위에서 Vite+React는 CLAUDE.md §2 YAGNI 위반 (12~20h vs 4~6h)
 - `@hono/node-server/serve-static`으로 기존 의존성 내 구현
 
-**구현 범위**: 검색창 + 결과 리스트 + 심볼 상세(signature · body · references). 인증·파일트리·커밋 선택 UI·키보드 단축키는 YAGNI로 제외.
+**구현 범위**: 검색창 + 결과 리스트 + 심볼 상세(signature · body · references) + 파일 개요(`/f?repo=&path=`). 인증·파일트리·커밋 선택 UI·키보드 단축키는 YAGNI로 제외.
 
 **참조**: `packages/server/src/public/`, `packages/server/src/app.ts`
+
+---
+
+## OQ-007: `dependencies` 데이터 — 스키마 승격 vs 내부 산출물 유지
+
+**상태**: 🔜 미결 — 팀 논의 필요
+
+**배경**: 현재 extractor는 `dependencies`(import/extends/implements 관계)를 계산하지만, `PackedIndex` 스키마와 서버 저장 경로에는 포함되지 않는다. 즉 파일 간 관계 데이터는 추출까지만 되고 인덱스에 남지 않는다.
+
+**선택지**:
+
+- **Option A (현상 유지)**: `dependencies`는 extractor 내부 산출물로만 남긴다. 문서에서 "파일 간 관계 분석 불가"를 명시. 공수 0.
+- **Option B (MVP+1 승격)**: `PackedIndex`에 `dependencies` 필드 추가. 서버 DB 스키마 확장. FT-002(그래프 쿼리) 전진 기지. 공수 2~3일.
+
+**트리거**: 파일 간 의존성 시각화 또는 impact analysis 수요 발생 시.
+
+**참조**: `docs/FINAL-RISKS-20260419.md §1`, `docs/FUTURE-TASKS.md FT-002`
+
+---
+
+## OQ-008: Variant B 활성화 시점 · 조건
+
+**상태**: ✅ Option B (조건부 착수) — 2026-04-19
+
+**결정 근거**: Contract MVP 선행 — Variant A 3개 레포 dogfooding으로 어댑터 인터페이스 안정성 확인. 수평 확장 수요 발생 전 PgAdapter·S3BlobAdapter parity 확보 + contract-variant-b.ts 전량 통과를 목표로 착수. 실레포 dogfooding(Variant B 모드 E2E)은 범위 외 — 트리거 도달 후 별도 세션.
+
+**배경**: Variant B (PostgreSQL + S3)는 `DbAdapter`/`BlobAdapter` 인터페이스와 스텁(`throw not-implemented`)만 존재한다. 문서 일부가 A/B를 동등한 완성 수준으로 서술하고 있어 독자가 오해할 수 있다.
+
+**선택지**:
+
+- **Option A (현상 유지)**: 당분간 skeleton으로 명시. 활성화 전까지 모든 문서·ADR에서 "Variant B = 스텁"으로 표기. Variant A 안정화 우선.
+- **Option B (조건부 착수)**: 아래 트리거 도달 시 FT-005 착수. ← **채택**
+
+**Variant B 착수 트리거 후보**:
+- 단일 서버 SQLite의 동시 부하 한계 실측 (p95 > 300ms)
+- 팀이 AWS/GCP 운영 환경으로 전환 결정
+- 다중 서버 수평 확장 수요 발생
+
+**참조**: `docs/FINAL-RISKS-20260419.md §4`, `docs/CONTRACT-TESTS.md CT-005`, ADR-023
+
+---
+
+## OQ-009: 검색 계약 확장 여부 (`/v1/search` 쿼리 surface)
+
+**상태**: 🔜 미결 — UX 피드백 축적 필요
+
+**배경**: 현재 `/v1/search?q=`는 영문자·숫자·`_`만 허용한다. 파일 경로 필터, 복합 쿼리, 한국어 식별자 검색을 지원하지 않는다. 사용자가 "왜 이 검색은 안 되지?"를 반복할 가능성이 있다.
+
+**선택지**:
+
+- **Option A (현상 유지)**: 현재 제약을 `GETTING-STARTED.md`와 `API.md`에 전면 표기하여 UX로 설명. 공수 0.
+- **Option B (점진 확장)**: FT-007로 추적. `path=src/**` 필터 및 복합 쿼리(`AND`) 지원. SQLite FTS5 `MATCH` 문법 확장. 공수 1~2일.
+
+**트리거**: 팀원·AI 에이전트의 검색 실패 피드백이 3회 이상 반복 시.
+
+**참조**: `docs/FINAL-RISKS-20260419.md §3`, `docs/FUTURE-TASKS.md FT-007`
 
 ---
 

@@ -80,6 +80,34 @@ try {
   check('symbol_count is 1', jsonBody.symbol_count === 1);
   check('occurrence_count is 1', jsonBody.occurrence_count === 1);
 
+  const missingIndexJsonRes = await app.request('/v1/indexes/999/index-json', {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify(packedIndex),
+  });
+  check('PUT /index-json nonexistent index → 404', missingIndexJsonRes.status === 404);
+
+  const mismatchedRepoRes = await app.request(`/v1/indexes/${indexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...packedIndex, repo_name: 'other-repo' }),
+  });
+  check('PUT /index-json repo mismatch → 409', mismatchedRepoRes.status === 409);
+
+  const mismatchedCommitRes = await app.request(`/v1/indexes/${indexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...packedIndex, commit_sha: 'zzz999' }),
+  });
+  check('PUT /index-json commit mismatch → 409', mismatchedCommitRes.status === 409);
+
+  const mismatchedBranchRes = await app.request(`/v1/indexes/${indexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...packedIndex, branch: 'release' }),
+  });
+  check('PUT /index-json branch mismatch → 409', mismatchedBranchRes.status === 409);
+
   // ─── 3. Upload source-zip ───────────────────────────────────────────────────
 
   const zip = new AdmZip();
@@ -106,13 +134,85 @@ try {
   const patchBody = await patchRes.json() as { status: string };
   check('patched status is ready', patchBody.status === 'ready');
 
+  const patchReplayRes = await app.request(`/v1/indexes/${indexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+  check('PATCH /indexes/:id replay after ready → 409', patchReplayRes.status === 409);
+
+  const patchMissingRes = await app.request('/v1/indexes/999', {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+  check('PATCH /indexes/:id nonexistent → 404', patchMissingRes.status === 404);
+
+  const emptyCreateRes = await app.request('/v1/repos/demo/indexes', {
+    method: 'POST',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_sha: 'empty123', branch: 'main' }),
+  });
+  const { index_id: emptyIndexId } = await emptyCreateRes.json() as { index_id: number };
+  const emptyPatchRes = await app.request(`/v1/indexes/${emptyIndexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 0 }),
+  });
+  check('PATCH /indexes/:id without uploads → 409', emptyPatchRes.status === 409);
+
+  const jsonOnlyCreateRes = await app.request('/v1/repos/demo/indexes', {
+    method: 'POST',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_sha: 'jsononly123', branch: 'main' }),
+  });
+  const { index_id: jsonOnlyIndexId } = await jsonOnlyCreateRes.json() as { index_id: number };
+  await app.request(`/v1/indexes/${jsonOnlyIndexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...packedIndex,
+      commit_sha: 'jsononly123',
+      symbols: [{
+        ...packedIndex.symbols[0],
+        symbol_key: 'b'.repeat(64),
+        name: 'jsonOnly',
+      }],
+      files: ['src/index.ts'],
+    } satisfies PackedIndex),
+  });
+  const jsonOnlyPatchRes = await app.request(`/v1/indexes/${jsonOnlyIndexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+  check('PATCH /indexes/:id with json only → 409', jsonOnlyPatchRes.status === 409);
+
+  const zipOnlyCreateRes = await app.request('/v1/repos/demo/indexes', {
+    method: 'POST',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_sha: 'ziponly123', branch: 'main' }),
+  });
+  const { index_id: zipOnlyIndexId } = await zipOnlyCreateRes.json() as { index_id: number };
+  await app.request(`/v1/indexes/${zipOnlyIndexId}/source-zip`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/octet-stream' },
+    body: zipBuf,
+  });
+  const zipOnlyPatchRes = await app.request(`/v1/indexes/${zipOnlyIndexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+  check('PATCH /indexes/:id with zip only → 409', zipOnlyPatchRes.status === 409);
+
   // ─── 5. Verify adapter state ────────────────────────────────────────────────
 
-  const sym = db.getSymbolByKey(symbolKey);
+  const sym = await db.getSymbolByKey(symbolKey);
   check('symbol persisted in DB', sym !== undefined);
   check('symbol name is greet', sym?.name === 'greet');
 
-  const idx = db.getIndexById(indexId);
+  const idx = await db.getIndexById(indexId);
   check('index status is ready', idx?.status === 'ready');
   check('index file_count is 1', idx?.file_count === 1);
 
@@ -234,7 +334,96 @@ try {
   const fsBadRes = await app.request('/v1/repos/demo/file-symbols?commit=abc123');
   check('GET file-symbols missing path → 400', fsBadRes.status === 400);
 
-  // ─── 15. Static files ──────────────────────────────────────────────────────
+  // ─── 15. BUG-3 regression: non-main branch resolves without explicit commit ─
+  // Repos using 'master' (or any branch != 'main') should be discoverable via
+  // HEAD lookup (getLatestReadyIndex fallback + corrected getOrCreateRepo branch).
+
+  const masterCreateRes = await app.request('/v1/repos/master-repo/indexes', {
+    method: 'POST',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_sha: 'deadbeef01', branch: 'master' }),
+  });
+  const { index_id: masterIndexId } = await masterCreateRes.json() as { index_id: number };
+  const masterPacked: PackedIndex = {
+    ...packedIndex,
+    repo_name: 'master-repo',
+    commit_sha: 'deadbeef01',
+    branch: 'master',
+    symbols: [{ ...packedIndex.symbols[0], symbol_key: 'c'.repeat(64), name: 'masterFn', file_path: 'src/master.ts' }],
+    files: ['src/master.ts'],
+  };
+  await app.request(`/v1/indexes/${masterIndexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify(masterPacked),
+  });
+  await app.request(`/v1/indexes/${masterIndexId}/source-zip`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/octet-stream' },
+    body: zipBuf,
+  });
+  await app.request(`/v1/indexes/${masterIndexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+
+  const masterSearchRes = await app.request('/v1/search?q=masterFn&repo=master-repo');
+  check('GET /v1/search master-branch repo (no commit) → 200', masterSearchRes.status === 200);
+  const masterSearchBody = await masterSearchRes.json() as { symbols: { name: string }[] };
+  check('master-branch repo search finds masterFn', masterSearchBody.symbols.some((s) => s.name === 'masterFn'));
+
+  const masterFilesRes = await app.request('/v1/repos/master-repo/files');
+  check('GET /v1/repos/master-repo/files (no commit) → 200', masterFilesRes.status === 200);
+  const masterFilesBody = await masterFilesRes.json() as { files: string[] };
+  check('master-branch repo files includes src/master.ts', masterFilesBody.files.includes('src/master.ts'));
+
+  // ─── 16. Refs-only index finalization (BUG-4 regression) ──────────────────
+  // A packer may produce files with occurrences but no symbol declarations.
+  // The server must be able to finalize and list these indexes.
+
+  const refsOnlyCreateRes = await app.request('/v1/repos/refs-only-repo/indexes', {
+    method: 'POST',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commit_sha: 'ref001', branch: 'main' }),
+  });
+  const { index_id: refsOnlyIndexId } = await refsOnlyCreateRes.json() as { index_id: number };
+
+  const refsOnlyZip = new AdmZip();
+  refsOnlyZip.addFile('src/calls.ts', Buffer.from('hello();'));
+  const refsOnlyZipBuf = refsOnlyZip.toBuffer();
+
+  await app.request(`/v1/indexes/${refsOnlyIndexId}/index-json`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      schema_version: 1 as const,
+      repo_name: 'refs-only-repo',
+      commit_sha: 'ref001',
+      branch: 'main',
+      generated_at: 0,
+      symbols: [],
+      occurrences: [{ caller_key: null, callee_name: 'hello', kind: 'call', file_path: 'src/calls.ts', line: 1 }],
+      files: ['src/calls.ts'],
+    }),
+  });
+  await app.request(`/v1/indexes/${refsOnlyIndexId}/source-zip`, {
+    method: 'PUT',
+    headers: { ...bearerHeader, 'Content-Type': 'application/octet-stream' },
+    body: refsOnlyZipBuf,
+  });
+  const refsOnlyPatchRes = await app.request(`/v1/indexes/${refsOnlyIndexId}`, {
+    method: 'PATCH',
+    headers: { ...bearerHeader, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'ready', file_count: 1 }),
+  });
+  check('refs-only index finalizes → 200 (P1 regression)', refsOnlyPatchRes.status === 200);
+
+  const refsOnlyFilesRes = await app.request('/v1/repos/refs-only-repo/files?commit=ref001');
+  const refsOnlyFilesBody = await refsOnlyFilesRes.json() as { files: string[] };
+  check('refs-only files includes src/calls.ts (P2 regression)', refsOnlyFilesBody.files.includes('src/calls.ts'));
+
+  // ─── 17. Static files ──────────────────────────────────────────────────────
 
   const indexHtmlRes = await app.request('/');
   check('GET / → 200', indexHtmlRes.status === 200);
@@ -252,8 +441,29 @@ try {
   check('GET /s/:key → 200 (serves symbol.html)', sKeyRes.status === 200);
   const sKeyText = await sKeyRes.text();
   check('GET /s/:key body is symbol.html', sKeyText.includes('id="sym-name"'));
+  check('GET /s/:key has refs disclaimer', sKeyText.includes('id="refs-disclaimer"'));
 
-  db.close();
+  // ─── 18. P3 Web UI enhancements ───────────────────────────────────────────
+
+  const filePageRes = await app.request('/f?repo=demo&path=src/index.ts&commit=abc123');
+  check('GET /f → 200', filePageRes.status === 200);
+  const filePageText = await filePageRes.text();
+  check('GET /f has file-symbols', filePageText.includes('id="file-symbols"'));
+
+  const cssResWithCache = await app.request('/style.css');
+  const cssCacheControl = cssResWithCache.headers.get('cache-control') ?? '';
+  check('GET /style.css Cache-Control has max-age', cssCacheControl.includes('max-age'));
+  check('GET /style.css has ETag', cssResWithCache.headers.has('etag'));
+
+  check('GET / has no-cache', (indexHtmlRes.headers.get('cache-control') ?? '').includes('no-cache'));
+
+  const cssEtag = cssResWithCache.headers.get('etag') ?? '';
+  const cssConditionalRes = await app.request('/style.css', {
+    headers: { 'If-None-Match': cssEtag },
+  });
+  check('GET /style.css If-None-Match → 304', cssConditionalRes.status === 304);
+
+  await db.close();
 } finally {
   rmSync(tmpBlob, { recursive: true, force: true });
 }

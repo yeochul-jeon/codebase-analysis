@@ -3,21 +3,25 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "build": "tsc --project tsconfig.json && cp -r src/storage/db/migrations dist/storage/db/migrations && cp -r src/public dist/public",
+    "build": "tsc --project tsconfig.json && cp -r src/storage/db/migrations dist/storage/db/migrations && cp -r src/storage/db/migrations-pg dist/storage/db/migrations-pg && cp -r src/public dist/public",
     "typecheck": "tsc --noEmit",
     "start": "node dist/dev.js",
     "dev": "tsx watch src/dev.ts",
-    "test": "tsx src/storage/__tests__/smoke.ts && tsx src/routes/__tests__/smoke.ts"
+    "test": "tsx src/storage/__tests__/smoke.ts && tsx src/routes/__tests__/smoke.ts",
+    "test:variant-b": "tsx src/storage/__tests__/contract-variant-b.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1032.0",
     "@codebase-analysis/shared": "workspace:*",
     "@hono/node-server": "^1.13.0",
     "@hono/zod-openapi": "^0.18.0",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/pg": "^8.20.0",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.9.0",
     "hono": "^4.6.0",
+    "pg": "^8.20.0",
     "zod": "^3.23.0"
   }
 }

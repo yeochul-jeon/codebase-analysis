@@ -110,7 +110,7 @@ function extractSymbolsFromNode(
 
   // Extract call references from method/constructor bodies
   if (kind === 'method' || kind === 'constructor') {
-    extractRefsFromBody(node, name, result);
+    extractRefsFromBody(node, name, myId, result);
   }
 
   // Recurse into class/interface/enum bodies
@@ -163,6 +163,7 @@ function buildSignature(node: Parser.SyntaxNode, kind: string): string | null {
 function extractRefsFromBody(
   node: Parser.SyntaxNode,
   callerName: string,
+  callerNodeId: number | null,
   result: ExtractionResult
 ): void {
   function walk(n: Parser.SyntaxNode): void {
@@ -172,7 +173,7 @@ function extractRefsFromBody(
       const identifiers = n.children.filter(c => c.type === 'identifier');
       const nameNode = identifiers[identifiers.length - 1];
       if (nameNode) {
-        result.refs.push({ callerName, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
+        result.refs.push({ callerName, callerNodeId, calleeName: text(nameNode), kind: 'call', line: n.startPosition.row + 1 });
       }
     }
     for (const child of n.children) walk(child);

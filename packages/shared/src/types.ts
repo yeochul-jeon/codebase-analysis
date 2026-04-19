@@ -23,6 +23,7 @@ export interface ExtractedDependency {
 
 export interface ExtractedRef {
   callerName: string;
+  callerNodeId?: number | null;
   calleeName: string;
   kind: 'call' | 'field_access' | 'type_reference' | 'annotation';
   line: number;  // 1-based source line of the reference node
