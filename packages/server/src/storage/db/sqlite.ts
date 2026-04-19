@@ -29,6 +29,12 @@ export class SqliteAdapter implements DbAdapter {
       .get(repoId, commitSha) as DbIndex | undefined;
   }
 
+  getIndexById(indexId: number): DbIndex | undefined {
+    return this.db
+      .prepare('SELECT * FROM indexes WHERE id = ?')
+      .get(indexId) as DbIndex | undefined;
+  }
+
   createIndex(repoId: number, commitSha: string, branch?: string): DbIndex {
     const result = this.db
       .prepare('INSERT INTO indexes(repo_id, commit_sha, branch) VALUES (?, ?, ?) RETURNING *')
@@ -52,6 +58,12 @@ export class SqliteAdapter implements DbAdapter {
   markIndexFailed(indexId: number): void {
     this.db
       .prepare("UPDATE indexes SET status = 'failed' WHERE id = ?")
+      .run(indexId);
+  }
+
+  resetIndexToUploading(indexId: number): void {
+    this.db
+      .prepare("UPDATE indexes SET status = 'uploading', file_count = NULL WHERE id = ?")
       .run(indexId);
   }
 
@@ -102,7 +114,7 @@ export class SqliteAdapter implements DbAdapter {
       WHERE s.id IN (SELECT rowid FROM symbols_fts WHERE symbols_fts MATCH ?)
         AND s.index_id = ?
       LIMIT ?
-    `).all(`${query}*`, idx.id, limit) as DbSymbol[];
+    `).all(`name:${query}*`, idx.id, limit) as DbSymbol[];
   }
 
   getSymbolByKey(symbolKey: string): DbSymbol | undefined {
@@ -125,6 +137,23 @@ export class SqliteAdapter implements DbAdapter {
     return this.db
       .prepare('SELECT * FROM occurrences WHERE callee_name = ? AND index_id = ?')
       .all(calleeName, idx.id) as DbOccurrence[];
+  }
+
+  getRepoByName(name: string): DbRepo | undefined {
+    return this.db.prepare('SELECT * FROM repos WHERE name = ?').get(name) as DbRepo | undefined;
+  }
+
+  getRepoHead(repoId: number, branch: string): { index_id: number } | undefined {
+    return this.db
+      .prepare('SELECT index_id FROM repo_head WHERE repo_id = ? AND branch = ?')
+      .get(repoId, branch) as { index_id: number } | undefined;
+  }
+
+  getFilesByIndex(indexId: number): string[] {
+    const rows = this.db
+      .prepare('SELECT DISTINCT file_path FROM symbols WHERE index_id = ? ORDER BY file_path')
+      .all(indexId) as { file_path: string }[];
+    return rows.map((r) => r.file_path);
   }
 
   close(): void {

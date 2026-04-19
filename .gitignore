@@ -6,3 +6,4 @@ pnpm-debug.log*
 .env
 .env.local
 .claude/
+.codebase-analysis/
