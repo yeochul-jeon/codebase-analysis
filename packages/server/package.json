@@ -1,0 +1,21 @@
+{
+  "name": "@codebase-analysis/server",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json && cp -r src/storage/db/migrations dist/storage/db/migrations",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/dev.ts"
+  },
+  "dependencies": {
+    "@codebase-analysis/shared": "workspace:*",
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-openapi": "^0.18.0",
+    "@types/adm-zip": "^0.5.8",
+    "@types/better-sqlite3": "^7.6.13",
+    "adm-zip": "^0.5.17",
+    "better-sqlite3": "^12.9.0",
+    "hono": "^4.6.0",
+    "zod": "^3.23.0"
+  }
+}

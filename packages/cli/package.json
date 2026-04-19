@@ -1,0 +1,23 @@
+{
+  "name": "@codebase-analysis/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "analyze": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@codebase-analysis/shared": "workspace:*",
+    "@types/adm-zip": "^0.5.8",
+    "adm-zip": "^0.5.17",
+    "commander": "^13.1.0",
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-java": "^0.23.5",
+    "tree-sitter-javascript": "^0.21.4",
+    "tree-sitter-typescript": "^0.21.2"
+  }
+}
