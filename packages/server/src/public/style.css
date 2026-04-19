@@ -145,7 +145,7 @@ main {
 
 #meta p { color: var(--text2); margin-bottom: 8px; font-size: 13px; }
 
-#sym-signature {
+#sym-sig-pre {
   padding: 10px 12px;
   background: var(--code-bg);
   border: 1px solid var(--border);
@@ -187,3 +187,26 @@ pre { overflow-x: auto; border-radius: 6px; }
 }
 
 .loading, .empty { color: var(--text2); padding: 10px 4px; font-size: 13px; }
+
+#refs-disclaimer {
+  color: var(--text2);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+#sym-refs li a { color: inherit; text-decoration: none; }
+#sym-refs li a:hover { color: var(--link); }
+
+#file-meta { color: var(--text2); font-size: 13px; margin-bottom: 12px; }
+
+#file-symbols { list-style: none; }
+#file-symbols li { border-bottom: 1px solid var(--border); }
+#file-symbols li a {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 4px;
+  text-decoration: none;
+  color: var(--text);
+}
+#file-symbols li a:hover { background: var(--bg2); }

@@ -61,13 +61,21 @@ async function runSearchPage() {
 
 async function doSearch({ q, repo, commit }) {
   $('#error').hidden = true;
+  if (!Q_ALLOWED.test(q ?? '')) {
+    $('#results').innerHTML = '';
+    showError(MSG_Q_INVALID);
+    return;
+  }
   $('#results').innerHTML = '<li class="loading">searching…</li>';
   try {
     const { symbols } = await apiGet('/v1/search?' + qs({ q, repo, commit }));
     renderResults(symbols, { repo, commit });
   } catch (e) {
     $('#results').innerHTML = '';
-    showError(e.message);
+    const m = String(e.message);
+    if (m.startsWith('404:'))      showError(MSG_NOT_READY);
+    else if (m.startsWith('400:')) showError(`${MSG_Q_INVALID}\n(서버 응답: ${m})`);
+    else                            showError(m);
   }
 }
 
@@ -89,6 +97,10 @@ function renderResults(symbols, ctx) {
 
 // ─── Symbol page ──────────────────────────────────────────────────────────────
 
+const Q_ALLOWED = /^[A-Za-z0-9_]+$/;
+const MSG_Q_INVALID = '검색어는 영문/숫자/`_`만 허용됩니다. 한국어 식별자·경로 필터는 아직 미지원입니다. (OQ-009)';
+const MSG_NOT_READY = '해당 repo/commit의 ready index를 찾을 수 없습니다. `analyze push` 완료 여부 또는 URL에 `?commit=<sha>` 명시를 확인하세요.';
+
 const HEX64 = /^[0-9a-f]{64}$/;
 
 async function runSymbolPage() {
@@ -98,6 +110,8 @@ async function runSymbolPage() {
     return;
   }
   const key = m[1];
+  const params = new URLSearchParams(location.search);
+  const ctx = { repo: params.get('repo') ?? '', commit: params.get('commit') ?? '' };
 
   try {
     const [{ symbol }, bodyPayload, { occurrences }] = await Promise.all([
@@ -106,7 +120,7 @@ async function runSymbolPage() {
       apiGet(`/v1/symbols/${key}/references`),
     ]);
     renderSymbol(symbol, bodyPayload);
-    renderRefs(occurrences);
+    renderRefs(occurrences, ctx);
   } catch (e) {
     showError(e.message);
   }
@@ -118,26 +132,76 @@ function renderSymbol(symbol, { body, file_path, start_line, end_line }) {
   $('#sym-kind').textContent = symbol.kind;
   $('#sym-file').textContent = file_path;
   $('#sym-lines').textContent = `${start_line}–${end_line}`;
-  $('#sym-signature').textContent = symbol.signature ?? '';
+
+  const sigEl = $('#sym-signature');
+  const lang = langForPath(file_path);
+  if (lang !== 'none') sigEl.className = `language-${lang}`;
+  sigEl.textContent = symbol.signature ?? '';
+  if (window.Prism && lang !== 'none') Prism.highlightElement(sigEl);
 
   const codeEl = $('#sym-body');
-  const lang = langForPath(file_path);
   if (lang !== 'none') codeEl.className = `language-${lang}`;
   codeEl.textContent = body;
   if (window.Prism && lang !== 'none') Prism.highlightElement(codeEl);
 }
 
-function renderRefs(occs) {
+function renderRefs(occs, ctx) {
   const ul = $('#sym-refs');
   if (!occs.length) {
     ul.innerHTML = '<li class="empty">no references found</li>';
     return;
   }
-  ul.innerHTML = occs.map((o) => `
+  ul.innerHTML = occs.map((o) => {
+    const nameHtml = Q_ALLOWED.test(o.callee_name)
+      ? `<a class="name" href="/?${qs({ ...ctx, q: o.callee_name })}">${escapeHtml(o.callee_name)}</a>`
+      : `<span class="name">${escapeHtml(o.callee_name)}</span>`;
+    const locHtml = `<a class="loc" href="/f?${qs({ ...ctx, path: o.file_path })}">${escapeHtml(o.file_path)}:${o.line}</a>`;
+    return `<li><span class="kind">${escapeHtml(o.kind)}</span>${nameHtml}${locHtml}</li>`;
+  }).join('');
+}
+
+// ─── File page ────────────────────────────────────────────────────────────────
+
+async function runFilePage() {
+  const params = new URLSearchParams(location.search);
+  const repo = params.get('repo') ?? '';
+  const commit = params.get('commit') ?? '';
+  const path = params.get('path') ?? '';
+
+  if (!repo || !path) {
+    showError('repo와 path 파라미터가 필요합니다.');
+    return;
+  }
+
+  document.title = `${path} — codebase-analysis`;
+  $('#file-path').textContent = path;
+  $('#file-meta').textContent = `repo: ${repo}${commit ? ` · ${commit.slice(0, 7)}` : ''}`;
+  $('#file-symbols').innerHTML = '<li class="loading">loading…</li>';
+
+  try {
+    const { symbols } = await apiGet(
+      `/v1/repos/${encodeURIComponent(repo)}/file-symbols?${qs({ path, commit })}`
+    );
+    renderFileSymbols(symbols, { repo, commit });
+  } catch (e) {
+    $('#file-symbols').innerHTML = '';
+    showError(e.message);
+  }
+}
+
+function renderFileSymbols(symbols, ctx) {
+  const ul = $('#file-symbols');
+  if (!symbols.length) {
+    ul.innerHTML = '<li class="empty">no symbols found</li>';
+    return;
+  }
+  ul.innerHTML = symbols.map((s) => `
     <li>
-      <span class="kind">${escapeHtml(o.kind)}</span>
-      <span class="name">${escapeHtml(o.callee_name)}</span>
-      <span class="loc">${escapeHtml(o.file_path)}:${o.line}</span>
+      <a href="/s/${s.symbol_key}?${qs(ctx)}">
+        <span class="name">${escapeHtml(s.name)}</span>
+        <span class="kind">${escapeHtml(s.kind)}</span>
+        <span class="loc">:${s.start_line}</span>
+      </a>
     </li>`).join('');
 }
 
@@ -148,4 +212,6 @@ if (p === '/' || p.endsWith('/index.html')) {
   runSearchPage();
 } else if (p.startsWith('/s/')) {
   runSymbolPage();
+} else if (p === '/f') {
+  runFilePage();
 }

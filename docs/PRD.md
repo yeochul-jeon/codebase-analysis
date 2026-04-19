@@ -19,7 +19,7 @@
 
 ## 핵심 기능
 
-1. **심볼 색인 업로드** — CI 또는 로컬에서 `analyze .` → `analyze push`로 `PUT /v1/indexes` 호출. tree-sitter 기반 심볼 선언·파일 구조·단순 참조 추출.
+1. **심볼 색인 업로드** — CI 또는 로컬에서 `analyze .` → `analyze push`로 4단계 REST 업로드 수행. tree-sitter 기반 심볼 선언·파일 구조·단순 참조 추출. (상세: [docs/API.md](API.md#rest--쓰기-엔드포인트-bearer-필요))
 2. **심볼 검색 (FTS)** — `GET /v1/search?q=&repo=&lang=`로 이름·시그니처 전문 검색. SQLite FTS5 또는 PostgreSQL GIN.
 3. **심볼 본문 조회** — `GET /v1/symbols/{key}/body`가 source.zip에서 해당 심볼 라인 범위를 추출해 반환.
 4. **파일/참조 탐색** — `GET /v1/symbols/{key}/references`, `GET /v1/repos/{slug}/files`로 파일 목록·참조 후보 제공.
@@ -46,7 +46,7 @@
 
 ## 디자인
 
-- **웹 UI**: 기능 중심 미니멀. 페이지 2개(검색, 심볼 상세)만 제공.
+- **웹 UI**: 기능 중심 미니멀. 페이지 3개(검색, 심볼 상세, 파일 개요)만 제공.
 - **타이포그래피**: 시스템 폰트(-apple-system, Segoe UI 등) + `ui-monospace` 코드 블록.
 - **색상**: 무채색 기본 + 포인트 1가지 (심볼 kind 강조용). 다크/라이트 모두 시스템 설정 추종(`prefers-color-scheme`).
 - **인터랙션**: SPA 불필요. 폼 제출 + 서버 렌더. 클라이언트 JS는 검색 자동완성 수준으로 최소화.
