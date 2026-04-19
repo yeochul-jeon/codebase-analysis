@@ -78,6 +78,8 @@ flowchart LR
 | 문서 | 대상 | 내용 |
 |---|---|---|
 | [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md) | 초보자 | 설치 → Docker 기동 → 첫 인덱스 → MCP 연결 단계별 가이드 |
+| [docs/USAGE.md](docs/USAGE.md) | 초보자·일반 사용자 | CLI 재인덱싱·웹 UI 투어·Claude/Cursor MCP 예시·REST curl |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | 모든 사용자 | 증상별 디버깅 체크리스트 (기동·업로드·검색·MCP·Variant B) |
 | [docs/OVERVIEW.md](docs/OVERVIEW.md) | 팀 리드·리뷰어 | 스펙, 모노레포 구조, mermaid 다이어그램 4종, 데이터 모델 |
 | [docs/API.md](docs/API.md) | 통합 개발자 | REST 엔드포인트 전수 + MCP tool 4종 + curl 예시 |
 | [docs/LANGUAGES.md](docs/LANGUAGES.md) | 기여자 | 지원 언어 매트릭스 + 새 언어 추가 가이드 |

@@ -229,76 +229,48 @@ UserService 클래스 정의 찾아줘.
 
 ---
 
-## 트러블슈팅
+## Step 10 — 재인덱싱·초기화
 
-<a id="trouble-1-native-build-실패"></a>
-### 1. native build 실패 (`better-sqlite3` / `tree-sitter` 빌드 에러)
+### 코드 변경 후 재인덱싱
 
-```
-gyp ERR! build error
-```
-
-**원인**: Python / C++ 빌드 도구 누락.
-
-**해결**:
-```bash
-# macOS
-xcode-select --install
-
-# Ubuntu/Debian
-sudo apt-get install -y python3 make g++
-
-# 이후 재설치
-pnpm install
-```
-
----
-
-### 2. 서버 기동 실패 — `ANALYZE_UPLOAD_TOKEN must be set`
-
-`docker/.env` 파일이 없거나 토큰이 비어 있음.
+새 커밋을 만들고 `analyze + push`를 다시 실행하면 새 인덱스가 생성되고 검색이 최신 코드를 가리킨다.
 
 ```bash
-cp docker/.env.example docker/.env
-# 편집기로 docker/.env 열고 ANALYZE_UPLOAD_TOKEN 값 설정
+git commit -am "feat: 변경사항"
+pnpm -F @codebase-analysis/cli dev -- analyze .
+pnpm -F @codebase-analysis/cli dev -- push
 ```
 
----
+**같은 커밋 재업로드** → `409 Conflict` (정상 동작, 데이터 불변 보장).
 
-### 3. 포트 충돌 — `port 3000 already in use`
-
-```bash
-# 3000 포트를 사용 중인 프로세스 확인
-lsof -ti:3000
-
-# docker-compose.yml에서 포트 변경 (예: 3001:3000)
-# 또는 해당 프로세스 종료
-```
-
----
-
-### 4. push 실패 — `ANALYZE_UPLOAD_TOKEN environment variable is not set`
-
-`push` 명령은 환경 변수에서 토큰을 읽는다. Step 7처럼 `export`로 설정하거나, `.env` 파일을 `source`한다:
+### 전체 데이터 초기화 (개발 환경)
 
 ```bash
-export ANALYZE_UPLOAD_TOKEN=<토큰>
-# 또는
-set -a && source docker/.env && set +a
-```
-
----
-
-### 5. SQLite 권한 오류 (`SQLITE_CANTOPEN`)
-
-Docker volume `ca_data`의 파일 권한 문제. 컨테이너를 완전히 재생성한다:
-
-```bash
+# ⚠️ -v 옵션은 모든 데이터(SQLite + blob)를 삭제한다
 docker compose -f docker/docker-compose.yml down -v
 docker compose -f docker/docker-compose.yml up --build -d
 ```
 
-> ⚠️ `-v` 옵션은 volume(데이터)도 삭제한다. 운영 중인 환경에서는 주의.
+### 토큰 재설정
+
+```bash
+# docker/.env 편집 후
+docker compose -f docker/docker-compose.yml restart server
+```
+
+---
+
+## 트러블슈팅
+
+자주 발생하는 문제 요약. 상세 체크리스트 및 추가 증상(검색 0건·MCP 미표시·웹 UI 빈 화면 등)은 **[docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)** 참고.
+
+| 증상 | 빠른 해결 |
+|---|---|
+| `gyp ERR!` native build 실패 | macOS: `xcode-select --install` / Ubuntu: `apt-get install python3 make g++` |
+| `ANALYZE_UPLOAD_TOKEN must be set` | `cp docker/.env.example docker/.env` 후 토큰 설정 |
+| `port 3000 already in use` | `lsof -ti:3000` 으로 프로세스 확인 후 종료 |
+| `push` 시 토큰 환경변수 없음 | `export ANALYZE_UPLOAD_TOKEN=<토큰>` 또는 `source docker/.env` |
+| `SQLITE_CANTOPEN` | `docker compose down -v && docker compose up --build -d` (⚠️ 데이터 삭제) |
 
 ---
 
@@ -378,6 +350,8 @@ RUN_VARIANT_B=1 \
 
 ## 다음 단계
 
-- REST API 전체 엔드포인트 → [docs/API.md](API.md)
+- **일상 사용법 (웹 UI·MCP 예시·재인덱싱·curl)** → [docs/USAGE.md](USAGE.md)
+- **문제 해결 체크리스트** → [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- REST/MCP 전체 레퍼런스 → [docs/API.md](API.md)
 - 새 언어(Kotlin 등) 추가 방법 → [docs/LANGUAGES.md](LANGUAGES.md)
 - 아키텍처 상세 → [docs/OVERVIEW.md](OVERVIEW.md)
