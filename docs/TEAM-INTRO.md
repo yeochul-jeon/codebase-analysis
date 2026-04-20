@@ -101,6 +101,8 @@ docker compose -f docker/docker-compose.yml up --build -d
 
 # 2. MCP 서버 빌드 (최초 1회)
 pnpm -F @codebase-analysis/mcp-server build
+# → Claude Code CLI 사용자는 여기까지만 하면 됨.
+#   레포 루트 .mcp.json을 자동 인식. 상세 절차 → docs/USAGE.md §4
 
 # 3. Claude Desktop MCP 설정 등록
 # 파일: ~/.claude/claude_desktop_config.json

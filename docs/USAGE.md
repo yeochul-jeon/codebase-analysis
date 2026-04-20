@@ -188,7 +188,61 @@ Claude: [get_file_overview 호출]
 
 ---
 
-## 4. Cursor MCP 연결
+## 4. Claude Code CLI MCP 등록
+
+### 프로젝트-스코프 (권장)
+
+레포 루트에 `.mcp.json`이 있으면 해당 디렉터리에서 `claude`를 실행할 때 자동으로 인식된다.
+
+```json
+{
+  "mcpServers": {
+    "codebase-analysis": {
+      "command": "node",
+      "args": ["/절대경로/codebase-analysis/packages/mcp-server/dist/index.js"],
+      "env": {
+        "ANALYZE_SERVER_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
+```
+
+> `args`의 경로는 본인 환경의 절대 경로로 수정. `~` 또는 상대 경로 사용 불가.
+
+### 개인-스코프 등록
+
+특정 레포에 `.mcp.json`을 두지 않고 전역 등록하려면:
+
+```bash
+claude mcp add codebase-analysis \
+  -- node /절대경로/packages/mcp-server/dist/index.js \
+  -e ANALYZE_SERVER_URL=http://localhost:3000
+```
+
+### 빌드 전제
+
+`dist/index.js`가 없으면 먼저 빌드:
+
+```bash
+pnpm -F @codebase-analysis/mcp-server build
+```
+
+### 연결 확인
+
+```bash
+claude mcp list          # codebase-analysis 항목 확인
+```
+
+세션 내에서 `/mcp` 입력 → `codebase-analysis` 아래 tool 4종(`search_symbols`, `get_symbol_body`, `get_references`, `get_file_overview`) 노출.
+
+### 연결이 안 될 때
+
+→ [TROUBLESHOOTING.md — MCP tool이 Claude Desktop에 안 보임](TROUBLESHOOTING.md#4-mcp-tool이-claude-desktop에-안-보임)
+
+---
+
+## 5. Cursor MCP 연결
 
 ### 설정 방법
 
@@ -228,7 +282,7 @@ Cursor 채팅창에서:
 
 ---
 
-## 5. REST API 실사용
+## 6. REST API 실사용
 
 ### 검색 → 상세 → 본문 파이프
 
